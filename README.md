@@ -1,6 +1,6 @@
 # Cyber Threat Intelligence Dashboard
 
-A production-grade, full-stack Cyber Threat Intelligence (CTI) platform built with **Spring Boot 3.3 (Java 21)**, **PostgreSQL**, and **React (Vite)**. The dashboard provides security operations teams and threat researchers with real-time indicators of compromise (IOCs), normalized threat records, 24-hour activity trends, source distribution analysis, multi-criteria filtering, and deep-dive threat investigation linking back to original intelligence feeds.
+A production-grade, full-stack Cyber Threat Intelligence (CTI) platform built with **Spring Boot 4.1 (Java 21)**, **PostgreSQL**, and **React (Vite)**. The dashboard provides security operations teams and threat researchers with real-time indicators of compromise (IOCs), normalized threat records, 24-hour activity trends, source distribution analysis, multi-criteria filtering, and deep-dive threat investigation linking back to original intelligence feeds.
 
 ---
 
