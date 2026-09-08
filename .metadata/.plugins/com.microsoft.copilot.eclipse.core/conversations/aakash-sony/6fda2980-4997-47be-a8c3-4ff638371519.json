@@ -1,0 +1,56 @@
+{
+  "conversationId": "6fda2980-4997-47be-a8c3-4ff638371519",
+  "title": "Explain the following HQL query with a clear summa...",
+  "requesterUsername": "aakash-sony",
+  "responderUsername": "GitHub Copilot",
+  "turns": [
+    {
+      "message": {
+        "text": "Explain the following HQL query with a clear summary first, followed by a detailed explanation. If the query contains any SpEL expressions, explain those parts as well: \n\n@Query(\"SELECT t.threatType, COUNT(t) FROM ThreatEntity t GROUP BY t.threatType ORDER BY COUNT(t) DESC\")\n\n"
+      },
+      "currentDocument": {
+        "uri": "/backend/src/main/java/com/cyberthreat/dashboard/repository/ThreatRepository.java"
+      },
+      "references": [],
+      "ignoredSkills": [],
+      "userLanguage": "en",
+      "source": "panel",
+      "model": "Auto",
+      "chatMode": "Agent",
+      "customChatModeId": "Agent",
+      "needToolCallConfirmation": true,
+      "turnId": "2355ac9d-6e2c-4180-841d-3387ede0f7c4",
+      "role": "user",
+      "timestamp": "2026-09-07T16:02:40.932406266Z"
+    },
+    {
+      "reply": {
+        "annotations": [],
+        "references": [],
+        "hideText": false,
+        "notifications": [],
+        "followups": [],
+        "errorMessages": [
+          {
+            "error": {
+              "message": "No model configuration found",
+              "code": -1
+            }
+          }
+        ],
+        "editAgentRounds": [],
+        "panelMessages": [],
+        "steps": [],
+        "agentMessages": [],
+        "data": {},
+        "modelName": "auto",
+        "billingMultiplier": 0.0
+      },
+      "turnId": "2355ac9d-6e2c-4180-841d-3387ede0f7c4",
+      "role": "copilot",
+      "timestamp": "2026-09-07T16:02:42.249085035Z"
+    }
+  ],
+  "creationDate": "2026-09-07T16:02:40.814515861Z",
+  "lastMessageDate": "2026-09-07T16:02:42.782978684Z"
+}

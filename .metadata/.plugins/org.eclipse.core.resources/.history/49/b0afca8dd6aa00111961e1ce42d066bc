@@ -1,0 +1,82 @@
+package com.cyberthreat.dashboard.repository;
+
+import com.cyberthreat.dashboard.entity.ThreatEntity;
+import com.cyberthreat.dashboard.enums.IndicatorType;
+import com.cyberthreat.dashboard.enums.Severity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface ThreatRepository extends JpaRepository<ThreatEntity, Long>, JpaSpecificationExecutor<ThreatEntity> {
+
+    Optional<ThreatEntity> findByIndicatorAndIndicatorTypeAndSource(
+            String indicator, IndicatorType indicatorType, String source);
+
+    Page<ThreatEntity> findBySeverity(Severity severity, Pageable pageable);
+
+    @Query("SELECT t.source, COUNT(t) FROM ThreatEntity t GROUP BY t.source ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedBySource();
+
+    @Query("SELECT t.severity, COUNT(t) FROM ThreatEntity t GROUP BY t.severity")
+    List<Object[]> countGroupedBySeverity();
+
+    @Query("SELECT t.threatType, COUNT(t) FROM ThreatEntity t GROUP BY t.threatType ORDER BY COUNT(t) DESC")
+     List<Object[]> countGroupedByThreatType();
+
+    @Query("SELECT t.country, COUNT(t) FROM ThreatEntity t WHERE t.country IS NOT NULL GROUP BY t.country ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByCountry();
+
+    @Query("SELECT t.source, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime GROUP BY t.source ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedBySourceSince(@Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT t.severity, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime GROUP BY t.severity")
+    List<Object[]> countGroupedBySeveritySince(@Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT t.threatType, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime GROUP BY t.threatType ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByThreatTypeSince(@Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT DISTINCT t.source FROM ThreatEntity t WHERE t.source IS NOT NULL ORDER BY t.source ASC")
+    List<String> findDistinctSources();
+
+    @Query("SELECT DISTINCT t.country FROM ThreatEntity t WHERE t.country IS NOT NULL AND t.country != '' ORDER BY t.country ASC")
+    List<String> findDistinctCountries();
+
+    @Query("SELECT MAX(t.lastSeen) FROM ThreatEntity t WHERE t.source = :source")
+    LocalDateTime findMaxLastSeenBySource(@Param("source") String source);
+
+    @Query("SELECT t.source, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime AND LOWER(t.country) = :country GROUP BY t.source ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedBySourceWithCountryAndSince(@Param("country") String country, @Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT t.source, COUNT(t) FROM ThreatEntity t WHERE LOWER(t.country) = :country GROUP BY t.source ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedBySourceWithCountry(@Param("country") String country);
+
+    @Query("SELECT t.severity, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime AND LOWER(t.country) = :country GROUP BY t.severity")
+    List<Object[]> countGroupedBySeverityWithCountryAndSince(@Param("country") String country, @Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT t.severity, COUNT(t) FROM ThreatEntity t WHERE LOWER(t.country) = :country GROUP BY t.severity")
+    List<Object[]> countGroupedBySeverityWithCountry(@Param("country") String country);
+
+    @Query("SELECT t.threatType, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime AND LOWER(t.country) = :country GROUP BY t.threatType ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByThreatTypeWithCountryAndSince(@Param("country") String country, @Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT t.threatType, COUNT(t) FROM ThreatEntity t WHERE LOWER(t.country) = :country GROUP BY t.threatType ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByThreatTypeWithCountry(@Param("country") String country);
+
+    @Query("SELECT t.country, COUNT(t) FROM ThreatEntity t WHERE t.country IS NOT NULL AND t.country != '' AND t.lastSeen >= :startTime GROUP BY t.country ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByCountrySince(@Param("startTime") LocalDateTime startTime);
+
+    @Query("SELECT t.indicatorType, COUNT(t) FROM ThreatEntity t GROUP BY t.indicatorType ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByIndicatorType();
+
+    @Query("SELECT t.indicatorType, COUNT(t) FROM ThreatEntity t WHERE t.lastSeen >= :startTime GROUP BY t.indicatorType ORDER BY COUNT(t) DESC")
+    List<Object[]> countGroupedByIndicatorTypeSince(@Param("startTime") LocalDateTime startTime);
+}

@@ -1,0 +1,34 @@
+package com.cyberthreat.dashboard.scheduler;
+
+import com.cyberthreat.dashboard.service.ThreatSyncService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Component;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class ThreatIngestionScheduler {
+
+    private final ThreatSyncService threatSyncService;
+
+    @Value("${threat.scheduler.enabled:true}")
+    private boolean schedulerEnabled;
+
+    /**
+     * Runs automatically every 15 minutes (default 900,000 milliseconds)
+     * Initial delay allows application startup and seed verification to complete cleanly.
+     */
+    @Scheduled(fixedRateString = "${threat.scheduler.fixed-rate-ms:900000}", initialDelay = 30000)
+    public void runScheduledThreatIngestion() {
+        if (!schedulerEnabled) {
+            log.info("Threat intelligence scheduler is disabled via configuration.");
+            return;
+        }
+
+        log.info("Triggering automatic 15-minute threat intelligence sync from live external feeds...");
+        threatSyncService.triggerSync();
+    }
+}

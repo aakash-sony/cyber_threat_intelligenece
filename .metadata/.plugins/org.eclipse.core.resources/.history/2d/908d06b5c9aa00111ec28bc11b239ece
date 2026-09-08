@@ -1,0 +1,436 @@
+package com.cyberthreat.dashboard.service.impl;
+
+import com.cyberthreat.dashboard.dto.response.*;
+import com.cyberthreat.dashboard.entity.ThreatEntity;
+import com.cyberthreat.dashboard.enums.IndicatorType;
+import com.cyberthreat.dashboard.enums.Severity;
+import com.cyberthreat.dashboard.enums.ThreatStatus;
+import com.cyberthreat.dashboard.enums.ThreatType;
+import com.cyberthreat.dashboard.repository.ThreatRepository;
+import com.cyberthreat.dashboard.service.DashboardService;
+import com.cyberthreat.dashboard.util.ThreatUrlUtils;
+import jakarta.persistence.criteria.Predicate;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DashboardServiceImpl implements DashboardService {
+
+    private final ThreatRepository threatRepository;
+
+    @Override
+    @Transactional(readOnly = true)
+    public DashboardSummaryResponse getSummary(String timeRange, String country) {
+        LocalDateTime startTime = parseStartTime(timeRange);
+        String normalizedCountry = normalizeCountry(country);
+
+        long totalThreats = countThreats(null, null, null, normalizedCountry, startTime);
+        long criticalThreats = countThreats(null, Severity.CRITICAL, null, normalizedCountry, startTime);
+        long highThreats = countThreats(null, Severity.HIGH, null, normalizedCountry, startTime);
+        long mediumThreats = countThreats(null, Severity.MEDIUM, null, normalizedCountry, startTime);
+        long lowThreats = countThreats(null, Severity.LOW, null, normalizedCountry, startTime);
+        long activeThreats = countThreats(null, null, ThreatStatus.ACTIVE, normalizedCountry, startTime);
+
+        long phishingCount = countThreats(ThreatType.PHISHING, null, null, normalizedCountry, startTime);
+        long malwareCount = countThreats(ThreatType.MALWARE, null, null, normalizedCountry, startTime);
+        long fraudCount = countThreats(ThreatType.FRAUD, null, null, normalizedCountry, startTime);
+
+        LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
+        long todayTotalIncrease = countThreats(null, null, null, normalizedCountry, startOfDay);
+        long todayPhishingIncrease = countThreats(ThreatType.PHISHING, null, null, normalizedCountry, startOfDay);
+        long todayMalwareIncrease = countThreats(ThreatType.MALWARE, null, null, normalizedCountry, startOfDay);
+        long todayFraudIncrease = countThreats(ThreatType.FRAUD, null, null, normalizedCountry, startOfDay);
+
+        return DashboardSummaryResponse.builder()
+                .totalThreats(totalThreats)
+                .criticalThreats(criticalThreats)
+                .highThreats(highThreats)
+                .mediumThreats(mediumThreats)
+                .lowThreats(lowThreats)
+                .activeThreats(activeThreats)
+                .phishingCount(phishingCount)
+                .malwareCount(malwareCount)
+                .fraudCount(fraudCount)
+                .todayTotalIncrease(todayTotalIncrease)
+                .todayPhishingIncrease(todayPhishingIncrease)
+                .todayMalwareIncrease(todayMalwareIncrease)
+                .todayFraudIncrease(todayFraudIncrease)
+                .build();
+    }
+
+    private long countThreats(ThreatType type, Severity severity, ThreatStatus status, String country, LocalDateTime startTime) {
+        Specification<ThreatEntity> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (startTime != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("lastSeen"), startTime));
+            }
+            if (country != null && !country.isBlank()) {
+                predicates.add(cb.equal(cb.lower(root.get("country")), country.toLowerCase().trim()));
+            }
+            if (type != null) {
+                predicates.add(cb.equal(root.get("threatType"), type));
+            }
+            if (severity != null) {
+                predicates.add(cb.equal(root.get("severity"), severity));
+            }
+            if (status != null) {
+                predicates.add(cb.equal(root.get("status"), status));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+        return threatRepository.count(spec);
+    }
+
+    private long countThreatsInWindow(ThreatType type, String country, LocalDateTime start, LocalDateTime end) {
+        Specification<ThreatEntity> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            if (start != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("lastSeen"), start));
+            }
+            if (end != null) {
+                predicates.add(cb.lessThan(root.get("lastSeen"), end));
+            }
+            if (country != null && !country.isBlank()) {
+                predicates.add(cb.equal(cb.lower(root.get("country")), country.toLowerCase().trim()));
+            }
+            if (type != null) {
+                predicates.add(cb.equal(root.get("threatType"), type));
+            }
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+        return threatRepository.count(spec);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ActivityPointResponse> getActivityTimeline(String timeRange, String country) {
+        String range = (timeRange == null || timeRange.isBlank()) ? "24h" : timeRange.toLowerCase().trim();
+        String normalizedCountry = normalizeCountry(country);
+        LocalDateTime now = LocalDateTime.now();
+        List<ActivityPointResponse> timeline = new ArrayList<>();
+
+        if ("7d".equals(range) || "week".equals(range)) {
+            DateTimeFormatter dFmt = DateTimeFormatter.ofPattern("d MMM");
+            for (int i = 6; i >= 0; i--) {
+                LocalDate day = now.toLocalDate().minusDays(i);
+                LocalDateTime start = day.atStartOfDay();
+                LocalDateTime end = day.plusDays(1).atStartOfDay();
+                timeline.add(buildActivityPoint(day.format(dFmt), start, end, normalizedCountry));
+            }
+        } else if ("30d".equals(range) || "1m".equals(range) || "month".equals(range)) {
+            DateTimeFormatter dFmt = DateTimeFormatter.ofPattern("d MMM");
+            for (int i = 5; i >= 0; i--) {
+                LocalDateTime start = now.minusDays((i + 1) * 5);
+                LocalDateTime end = now.minusDays(i * 5);
+                timeline.add(buildActivityPoint(end.format(dFmt), start, end, normalizedCountry));
+            }
+        } else if ("90d".equals(range) || "3m".equals(range)) {
+            DateTimeFormatter dFmt = DateTimeFormatter.ofPattern("d MMM");
+            for (int i = 5; i >= 0; i--) {
+                LocalDateTime start = now.minusDays((i + 1) * 15);
+                LocalDateTime end = now.minusDays(i * 15);
+                timeline.add(buildActivityPoint(end.format(dFmt), start, end, normalizedCountry));
+            }
+        } else {
+            DateTimeFormatter hFmt = DateTimeFormatter.ofPattern("h a");
+            for (int i = 7; i >= 0; i--) {
+                LocalDateTime start = now.minusHours((i + 1) * 3);
+                LocalDateTime end = now.minusHours(i * 3);
+                timeline.add(buildActivityPoint(end.format(hFmt), start, end, normalizedCountry));
+            }
+        }
+
+        return timeline;
+    }
+
+    private ActivityPointResponse buildActivityPoint(String label, LocalDateTime start, LocalDateTime end, String country) {
+        long phishing = countThreatsInWindow(ThreatType.PHISHING, country, start, end);
+        long malware = countThreatsInWindow(ThreatType.MALWARE, country, start, end);
+        long fraud = countThreatsInWindow(ThreatType.FRAUD, country, start, end);
+        long total = phishing + malware + fraud;
+
+        return ActivityPointResponse.builder()
+                .time(label)
+                .phishing(phishing)
+                .malware(malware)
+                .fraud(fraud)
+                .total(total)
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SourceStatResponse> getThreatsBySource(String timeRange, String country) {
+        LocalDateTime startTime = parseStartTime(timeRange);
+        String normalizedCountry = normalizeCountry(country);
+        List<Object[]> rows;
+
+        if (normalizedCountry != null && startTime != null) {
+            rows = threatRepository.countGroupedBySourceWithCountryAndSince(normalizedCountry.toLowerCase(), startTime);
+        } else if (normalizedCountry != null) {
+            rows = threatRepository.countGroupedBySourceWithCountry(normalizedCountry.toLowerCase());
+        } else if (startTime != null) {
+            rows = threatRepository.countGroupedBySourceSince(startTime);
+        } else {
+            rows = threatRepository.countGroupedBySource();
+        }
+
+        long total = 0;
+        for (Object[] row : rows) {
+            total += ((Number) row[1]).longValue();
+        }
+
+        Map<String, String> sourceColors = Map.of(
+                "PhishTank", "#2563eb",
+                "URLhaus", "#8b5cf6",
+                "OpenPhish", "#059669",
+                "I4C / NCRP", "#d97706",
+                "ThreatFox", "#ef4444",
+                "AlienVault OTX", "#06b6d4"
+        );
+
+        List<SourceStatResponse> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            String source = (String) row[0];
+            long count = ((Number) row[1]).longValue();
+            double percentage = total > 0 ? Math.round((count * 100.0 / total) * 10.0) / 10.0 : 0.0;
+            String color = sourceColors.getOrDefault(source, "#64748b");
+
+            result.add(SourceStatResponse.builder()
+                    .source(source)
+                    .count(count)
+                    .percentage(percentage)
+                    .color(color)
+                    .build());
+        }
+
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<SeverityStatResponse> getThreatsBySeverity(String timeRange, String country) {
+        LocalDateTime startTime = parseStartTime(timeRange);
+        String normalizedCountry = normalizeCountry(country);
+        List<Object[]> rows;
+
+        if (normalizedCountry != null && startTime != null) {
+            rows = threatRepository.countGroupedBySeverityWithCountryAndSince(normalizedCountry.toLowerCase(), startTime);
+        } else if (normalizedCountry != null) {
+            rows = threatRepository.countGroupedBySeverityWithCountry(normalizedCountry.toLowerCase());
+        } else if (startTime != null) {
+            rows = threatRepository.countGroupedBySeveritySince(startTime);
+        } else {
+            rows = threatRepository.countGroupedBySeverity();
+        }
+
+        long total = 0;
+        Map<Severity, Long> counts = new EnumMap<>(Severity.class);
+        for (Object[] row : rows) {
+            if (row[0] == null) continue;
+            Severity sev;
+            if (row[0] instanceof Severity) {
+                sev = (Severity) row[0];
+            } else {
+                try {
+                    sev = Severity.valueOf(row[0].toString());
+                } catch (Exception e) {
+                    continue;
+                }
+            }
+            long count = ((Number) row[1]).longValue();
+            counts.put(sev, count);
+            total += count;
+        }
+
+        List<SeverityStatResponse> result = new ArrayList<>();
+        for (Severity sev : Severity.values()) {
+            long count = counts.getOrDefault(sev, 0L);
+            double percentage = total > 0 ? Math.round((count * 100.0 / total) * 10.0) / 10.0 : 0.0;
+            result.add(SeverityStatResponse.builder()
+                    .severity(sev)
+                    .count(count)
+                    .percentage(percentage)
+                    .build());
+        }
+
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ThreatTypeStatResponse> getThreatsByType(String timeRange, String country) {
+        LocalDateTime startTime = parseStartTime(timeRange);
+        String normalizedCountry = normalizeCountry(country);
+        List<Object[]> rows;
+
+        if (normalizedCountry != null && startTime != null) {
+            rows = threatRepository.countGroupedByThreatTypeWithCountryAndSince(normalizedCountry.toLowerCase(), startTime);
+        } else if (normalizedCountry != null) {
+            rows = threatRepository.countGroupedByThreatTypeWithCountry(normalizedCountry.toLowerCase());
+        } else if (startTime != null) {
+            rows = threatRepository.countGroupedByThreatTypeSince(startTime);
+        } else {
+            rows = threatRepository.countGroupedByThreatType();
+        }
+
+        long total = 0;
+        for (Object[] row : rows) {
+            total += ((Number) row[1]).longValue();
+        }
+
+        List<ThreatTypeStatResponse> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            if (row[0] == null) continue;
+            ThreatType type;
+            if (row[0] instanceof ThreatType) {
+                type = (ThreatType) row[0];
+            } else {
+                try {
+                    type = ThreatType.valueOf(row[0].toString());
+                } catch (Exception e) {
+                    continue;
+                }
+            }
+            long count = ((Number) row[1]).longValue();
+            double percentage = total > 0 ? Math.round((count * 100.0 / total) * 10.0) / 10.0 : 0.0;
+
+            result.add(ThreatTypeStatResponse.builder()
+                    .threatType(type)
+                    .count(count)
+                    .percentage(percentage)
+                    .build());
+        }
+
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> getAvailableCountries() {
+        List<String> countries = threatRepository.findDistinctCountries();
+        if (!countries.contains("India")) {
+            countries.add(0, "India");
+        }
+        return countries;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getCountryStats(String timeRange) {
+        LocalDateTime startTime = parseStartTime(timeRange);
+        List<Object[]> rows;
+        if (startTime != null) {
+            rows = threatRepository.countGroupedByCountrySince(startTime);
+        } else {
+            rows = threatRepository.countGroupedByCountry();
+        }
+
+        long total = 0;
+        for (Object[] row : rows) {
+            total += ((Number) row[1]).longValue();
+        }
+
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Object[] row : rows) {
+            String countryName = (String) row[0];
+            long count = ((Number) row[1]).longValue();
+            double percentage = total > 0 ? Math.round((count * 100.0 / total) * 10.0) / 10.0 : 0.0;
+
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("country", countryName);
+            entry.put("count", count);
+            entry.put("percentage", percentage);
+            results.add(entry);
+        }
+        return results;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DetailedSourceResponse> getDetailedSources() {
+        List<String> sources = threatRepository.findDistinctSources();
+        List<DetailedSourceResponse> result = new ArrayList<>();
+
+        Map<String, String> descMap = Map.of(
+                "PhishTank", "Collaborative clearing house for verified phishing data.",
+                "URLhaus", "Project from abuse.ch sharing malicious URLs used for malware distribution.",
+                "OpenPhish", "Autonomous phishing threat intelligence feed detecting active attacks.",
+                "I4C / NCRP", "National Cybercrime Reporting Portal under Ministry of Home Affairs, India.",
+                "ThreatFox", "Free platform from abuse.ch for sharing Indicators of Compromise (IOCs).",
+                "AlienVault OTX", "Global open threat intelligence community."
+        );
+
+        Map<String, String> statusMap = Map.of(
+                "PhishTank", "ACTIVE",
+                "URLhaus", "ACTIVE",
+                "OpenPhish", "ACTIVE",
+                "I4C / NCRP", "ACTIVE",
+                "ThreatFox", "ACTIVE",
+                "AlienVault OTX", "ACTIVE"
+        );
+
+        for (String source : sources) {
+            long total = threatRepository.countGroupedBySource().stream()
+                    .filter(r -> source.equals(r[0]))
+                    .mapToLong(r -> ((Number) r[1]).longValue())
+                    .findFirst()
+                    .orElse(0L);
+
+            LocalDateTime maxLastSeen = threatRepository.findMaxLastSeenBySource(source);
+
+            result.add(DetailedSourceResponse.builder()
+                    .name(source)
+                    .status(statusMap.getOrDefault(source, "ACTIVE"))
+                    .count(total)
+                    .percentage(0.0)
+                    .type("Verified Threat Intelligence Stream")
+                    .url(ThreatUrlUtils.buildExactCaseUrl(source, "", IndicatorType.URL))
+                    .color("#2563eb")
+                    .lastDetected(maxLastSeen != null ? maxLastSeen : LocalDateTime.now())
+                    .description(descMap.getOrDefault(source, "Connected Cyber Threat Intelligence stream."))
+                    .build());
+        }
+
+        return result;
+    }
+
+    private String normalizeCountry(String country) {
+        if (country == null || country.isBlank() || country.equalsIgnoreCase("all") || country.equalsIgnoreCase("all countries")) {
+            return null;
+        }
+        return country.trim();
+    }
+
+    private LocalDateTime parseStartTime(String timeRange) {
+        if (timeRange == null || timeRange.isBlank() || timeRange.equalsIgnoreCase("all")) {
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        switch (timeRange.toLowerCase().trim()) {
+            case "7d":
+            case "week":
+                return now.minusDays(7);
+            case "30d":
+            case "1m":
+            case "month":
+                return now.minusDays(30);
+            case "90d":
+            case "3m":
+                return now.minusDays(90);
+            case "24h":
+            default:
+                return now.minusHours(24);
+        }
+    }
+}

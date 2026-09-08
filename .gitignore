@@ -1,0 +1,17 @@
+# Maven
+backend/target/
+backend/.mvn/wrapper/maven-wrapper.jar
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/*.local
+
+# Logs
+*.log
+
+# OS & IDE
+.DS_Store
+.idea/
+*.iml
+.vscode/

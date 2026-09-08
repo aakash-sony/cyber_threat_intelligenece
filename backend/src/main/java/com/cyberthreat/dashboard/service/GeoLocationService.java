@@ -1,0 +1,38 @@
+package com.cyberthreat.dashboard.service;
+
+import java.util.Collection;
+import java.util.Map;
+
+import com.cyberthreat.dashboard.dto.response.GeoLocationDto;
+import com.cyberthreat.dashboard.enums.IndicatorType;
+
+/**
+ * Service abstraction for resolving authentic geolocation data for IP addresses
+ * and threat indicators (URLs, domains) using external public geolocation APIs.
+ */
+public interface GeoLocationService {
+
+	/**
+	 * Resolves geolocation metadata for a specific IP address.
+	 * Looks up local cache first, then falls back to public API if uncached.
+	 */
+	GeoLocationDto resolveIp(String ip);
+
+	/**
+	 * Resolves geolocation for a given threat indicator.
+	 * Extracts IP directly or resolves domain/URL via DNS to obtain the target IP.
+	 * If DNS fails or indicator is not resolvable, returns Unknown/null without fabricating data.
+	 */
+	GeoLocationDto resolveIndicator(String indicator, IndicatorType indicatorType);
+
+	/**
+	 * Batch resolution that deduplicates indicators and checks cache before making external calls,
+	 * completely eliminating N+1 external API calls.
+	 */
+	Map<String, GeoLocationDto> resolveIndicatorsBatch(Collection<String> indicators);
+
+	/**
+	 * Extracts host name or IP address from an indicator without making external calls.
+	 */
+	String extractHostOrIp(String indicator, IndicatorType indicatorType);
+}

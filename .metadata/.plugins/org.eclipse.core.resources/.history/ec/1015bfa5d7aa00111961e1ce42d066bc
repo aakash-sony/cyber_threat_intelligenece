@@ -1,0 +1,191 @@
+package com.cyberthreat.dashboard.service.impl;
+
+import com.cyberthreat.dashboard.constant.ThreatApiConstants;
+import com.cyberthreat.dashboard.dto.request.ThreatCreateRequest;
+import com.cyberthreat.dashboard.enums.IndicatorType;
+import com.cyberthreat.dashboard.enums.Severity;
+import com.cyberthreat.dashboard.enums.ThreatStatus;
+import com.cyberthreat.dashboard.enums.ThreatType;
+import com.cyberthreat.dashboard.service.ThreatIntelligenceProvider;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class ThreatFoxFeedProvider implements ThreatIntelligenceProvider {
+
+    private final RestTemplate restTemplate;
+    private final ObjectMapper objectMapper;
+
+    @Value("${threat.feed.threatfox.enabled:true}")
+    private boolean enabled;
+
+    @Value("${threat.feed.threatfox.url:https://threatfox.abuse.ch/export/json/recent/}")
+    private String feedUrl;
+
+    @Value("${threat.ingestion.batch-limit:1000}")
+    private int batchLimit;
+
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    @Override
+    public String getProviderName() {
+        return "ThreatFox";
+    }
+
+    @Override
+    public String getFeedUrl() {
+        return ThreatApiConstants.THREATFOX_SEARCH_URL;
+    }
+
+    @Override
+    public String getDescription() {
+        return "Free platform from abuse.ch to share indicators of compromise (IOCs) associated with malware and botnets.";
+    }
+
+    @Override
+    public String getProviderType() {
+        return "REST JSON IOC Export (abuse.ch)";
+    }
+
+    @Override
+    public boolean isLiveFeed() {
+        return enabled;
+    }
+
+    @Override
+    public List<ThreatCreateRequest> fetchThreats() {
+        if (!enabled) {
+            log.info("ThreatFox live feed provider is disabled in configuration.");
+            return Collections.emptyList();
+        }
+
+        final List<ThreatCreateRequest> results = new ArrayList<>();
+        try {
+            final String targetUrl = (feedUrl != null && !feedUrl.isBlank()) ? feedUrl : ThreatApiConstants.THREATFOX_DEFAULT_FEED_URL;
+            log.info("Polling live IOC telemetry from ThreatFox feed: {}", targetUrl);
+            final String responseBody = restTemplate.getForObject(targetUrl, String.class);
+            if (responseBody == null || responseBody.isBlank()) {
+                log.warn("ThreatFox returned an empty response payload.");
+                return results;
+            }
+
+            final JsonNode root = objectMapper.readTree(responseBody);
+            final Iterator<Map.Entry<String, JsonNode>> fields = root.fields();
+
+            int count = 0;
+            while (fields.hasNext() && count < batchLimit) {
+                final Map.Entry<String, JsonNode> entry = fields.next();
+                final String iocId = entry.getKey();
+                final JsonNode arrayNode = entry.getValue();
+
+                if (arrayNode != null && arrayNode.isArray() && !arrayNode.isEmpty()) {
+                    final JsonNode item = arrayNode.get(0);
+                    final String iocValue = item.path("ioc_value").asText("").trim();
+                    if (iocValue.isBlank()) continue;
+
+                    final String iocTypeStr = item.path("ioc_type").asText("url").toLowerCase();
+                    final String threatTypeStr = item.path("threat_type").asText("payload_delivery").toLowerCase();
+                    final String malwareName = item.path("malware_printable").asText("Malware Activity");
+                    final int confidence = item.path("confidence_level").asInt(75);
+                    final String dateStr = item.path("first_seen_utc").asText("");
+
+                    LocalDateTime lastSeen = LocalDateTime.now();
+                    if (!dateStr.isBlank()) {
+                        try {
+                            lastSeen = LocalDateTime.parse(dateStr, DATE_FORMAT);
+                        } catch (final Exception ignored) {
+                            lastSeen = LocalDateTime.now();
+                        }
+                    }
+
+                    final IndicatorType indType;
+                    if (iocTypeStr.contains("ip")) {
+                        indType = IndicatorType.IP;
+                    } else if (iocTypeStr.contains("domain")) {
+                        indType = IndicatorType.DOMAIN;
+                    } else if (iocTypeStr.contains("hash") || iocTypeStr.contains("md5") || iocTypeStr.contains("sha")) {
+                        indType = IndicatorType.HASH;
+                    } else {
+                        indType = IndicatorType.URL;
+                    }
+
+                    final ThreatType tType;
+                    if (threatTypeStr.contains("botnet") || malwareName.toLowerCase().contains("botnet")) {
+                        tType = ThreatType.BOTNET;
+                    } else if (threatTypeStr.contains("c2") || threatTypeStr.contains("command") || malwareName.toLowerCase().contains("c2")) {
+                        tType = ThreatType.COMMAND_AND_CONTROL;
+                    } else if (malwareName.toLowerCase().contains("ransomware")) {
+                        tType = ThreatType.RANSOMWARE;
+                    } else if (threatTypeStr.contains("phishing")) {
+                        tType = ThreatType.PHISHING;
+                    } else {
+                        tType = ThreatType.MALWARE;
+                    }
+
+                    final Severity severity;
+                    if (confidence >= 85 || tType == ThreatType.COMMAND_AND_CONTROL || tType == ThreatType.RANSOMWARE) {
+                        severity = Severity.CRITICAL;
+                    } else if (confidence >= 70) {
+                        severity = Severity.HIGH;
+                    } else {
+                        severity = Severity.MEDIUM;
+                    }
+
+                    final List<String> tags = new ArrayList<>();
+                    tags.add("threatfox");
+                    tags.add(indType.name().toLowerCase());
+                    tags.add(tType.name().toLowerCase());
+                    if (item.has("tags") && item.get("tags").isArray()) {
+                        for (final JsonNode t : item.get("tags")) {
+                            if (!t.asText().isBlank()) tags.add(t.asText().trim().toLowerCase());
+                        }
+                    }
+
+                    final String sourceUrl = ThreatApiConstants.THREATFOX_IOC_URL + iocId + "/";
+                    final String description = String.format(
+                            "%s indicator identified as %s. Threat classification: %s with confidence level of %d%%.",
+                            malwareName, indType.name(), threatTypeStr.replace('_', ' '), confidence
+                    );
+
+                    // Note: country is left null for authentic IP Geolocation resolution
+                    final ThreatCreateRequest request = ThreatCreateRequest.builder()
+                            .indicator(iocValue)
+                            .indicatorType(indType)
+                            .threatType(tType)
+                            .severity(severity)
+                            .confidence(confidence)
+                            .description(description)
+                            .source("ThreatFox")
+                            .sourceUrl(sourceUrl)
+                            .target("Enterprise Perimeter & Endpoints")
+                            .country(null)
+                            .status(ThreatStatus.ACTIVE)
+                            .tags(tags)
+                            .firstSeen(lastSeen)
+                            .lastSeen(lastSeen)
+                            .build();
+
+                    results.add(request);
+                    count++;
+                }
+            }
+            log.info("Successfully fetched and normalized {} live IOCs from ThreatFox.", results.size());
+        } catch (Exception e) {
+            log.error("Failed to fetch live data from ThreatFox feed: {}", e.getMessage());
+        }
+        return results;
+    }
+}

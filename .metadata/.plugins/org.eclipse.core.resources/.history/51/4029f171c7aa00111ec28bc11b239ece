@@ -1,0 +1,60 @@
+package com.cyberthreat.dashboard.util;
+
+import com.cyberthreat.dashboard.enums.IndicatorType;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
+/**
+ * Utility for generating deep-link investigation URLs into threat feeds.
+ */
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public final class ThreatUrlUtils {
+
+    /**
+     * Constructs a direct investigation portal URL for a given intelligence source and indicator.
+     */
+    public static String buildExactCaseUrl(String source, String indicator, IndicatorType indType) {
+        if (source == null || indicator == null) {
+            return "https://www.virustotal.com/gui/search/" + (indicator != null ? URLEncoder.encode(indicator.trim(), StandardCharsets.UTF_8) : "");
+        }
+        String ind = indicator.trim();
+        String src = source.toLowerCase(Locale.ROOT);
+        String encoded = URLEncoder.encode(ind, StandardCharsets.UTF_8);
+
+        if (src.contains("phishtank")) {
+            return "https://phishtank.org/phish_search.php?valid=y&active=y&Search=Search&search_path=" + encoded;
+        }
+        if (src.contains("urlhaus")) {
+            return "https://urlhaus.abuse.ch/browse.php?search=" + encoded;
+        }
+        if (src.contains("threatfox")) {
+            if (ind.matches("^[a-zA-Z0-9.\\-_]+$")) {
+                return "https://threatfox.abuse.ch/ioc/" + ind + "/";
+            }
+            return "https://threatfox.abuse.ch/browse.php?search=ioc%3A" + encoded;
+        }
+        if (src.contains("alienvault") || src.contains("otx")) {
+            if (indType == IndicatorType.IP || ind.matches("^(?:\\d{1,3}\\.){3}\\d{1,3}$")) {
+                return "https://otx.alienvault.com/indicator/ip/" + ind;
+            }
+            if (indType == IndicatorType.DOMAIN || ind.matches("^[a-zA-Z0-9-]+\\.[a-zA-Z]{2,}$")) {
+                return "https://otx.alienvault.com/indicator/domain/" + ind;
+            }
+            if (indType == IndicatorType.HASH || ind.matches("^[a-fA-F0-9]{32,64}$")) {
+                return "https://otx.alienvault.com/indicator/file/" + ind;
+            }
+            return "https://otx.alienvault.com/indicator/url/" + encoded;
+        }
+        if (src.contains("i4c") || src.contains("ncrp") || src.contains("cybercrime")) {
+            return "https://cybercrime.gov.in/";
+        }
+        if (src.contains("openphish")) {
+            return "https://openphish.com/?url=" + encoded;
+        }
+        return "https://www.virustotal.com/gui/search/" + encoded;
+    }
+}

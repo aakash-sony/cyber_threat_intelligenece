@@ -1,0 +1,68 @@
+package com.cyberthreat.dashboard.repository;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.springframework.data.jpa.domain.Specification;
+
+import com.cyberthreat.dashboard.dto.request.ThreatFilterRequest;
+import com.cyberthreat.dashboard.entity.ThreatEntity;
+
+import jakarta.persistence.criteria.Predicate;
+
+public class ThreatSpecification {
+
+	public static Specification<ThreatEntity> withFilter(final ThreatFilterRequest filter) {
+		return (root, query, criteriaBuilder) -> {
+			final List<Predicate> predicates = new ArrayList<>();
+
+			if (filter == null)
+				return criteriaBuilder.conjunction();
+
+			// Keyword search across indicator, description, country, source, target, tags
+			if (filter.getKeyword() != null && !filter.getKeyword().trim().isEmpty()) {
+				final var pattern = "%" + filter.getKeyword().trim().toLowerCase() + "%";
+				final var indicatorPred = criteriaBuilder.like(criteriaBuilder.lower(root.get("indicator")), pattern);
+				final var descPred = criteriaBuilder.like(criteriaBuilder.lower(root.get("description")), pattern);
+				final var countryPred = criteriaBuilder.like(criteriaBuilder.lower(root.get("country")), pattern);
+				final var sourcePred = criteriaBuilder.like(criteriaBuilder.lower(root.get("source")), pattern);
+				final var targetPred = criteriaBuilder.like(criteriaBuilder.lower(root.get("target")), pattern);
+				final var tagsPred = criteriaBuilder.like(criteriaBuilder.lower(root.get("tags")), pattern);
+
+				predicates.add(criteriaBuilder.or(indicatorPred, descPred, countryPred, sourcePred, targetPred, tagsPred));
+			}
+
+			if (filter.getSeverity() != null)
+				predicates.add(criteriaBuilder.equal(root.get("severity"), filter.getSeverity()));
+
+			if (filter.getThreatType() != null)
+				predicates.add(criteriaBuilder.equal(root.get("threatType"), filter.getThreatType()));
+
+			if (filter.getIndicatorType() != null)
+				predicates.add(criteriaBuilder.equal(root.get("indicatorType"), filter.getIndicatorType()));
+
+			if (filter.getStatus() != null)
+				predicates.add(criteriaBuilder.equal(root.get("status"), filter.getStatus()));
+
+			if (filter.getCountry() != null && !filter.getCountry().trim().isEmpty())
+				predicates.add(criteriaBuilder.equal(
+						criteriaBuilder.lower(root.get("country")),
+						filter.getCountry().trim().toLowerCase()
+						));
+
+			if (filter.getSource() != null && !filter.getSource().trim().isEmpty())
+				predicates.add(criteriaBuilder.equal(
+						criteriaBuilder.lower(root.get("source")),
+						filter.getSource().trim().toLowerCase()
+						));
+
+			if (filter.getTarget() != null && !filter.getTarget().trim().isEmpty())
+				predicates.add(criteriaBuilder.equal(
+						criteriaBuilder.lower(root.get("target")),
+						filter.getTarget().trim().toLowerCase()
+						));
+
+			return criteriaBuilder.and(predicates.toArray(new Predicate[0]));
+		};
+	}
+}
