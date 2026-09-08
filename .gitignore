@@ -1,17 +1,111 @@
-# Maven
-backend/target/
-backend/.mvn/wrapper/maven-wrapper.jar
+# ==========================================
+# Eclipse & Spring Tool Suite (STS) Workspace & Metadata
+# ==========================================
+.metadata/
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+*.launch
+.springBeans
+.sts4-cache/
 
-# Node
+# Eclipse project files
+.project
+.classpath
+.factorypath
+
+# ==========================================
+# Maven / Java Build Artifacts
+# ==========================================
+target/
+**/target/
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+backend/target/
+backend/pom.xml.tag
+backend/pom.xml.releaseBackup
+backend/pom.xml.versionsBackup
+backend/pom.xml.next
+backend/release.properties
+backend/dependency-reduced-pom.xml
+backend/buildNumber.properties
+backend/.mvn/timing.properties
+backend/.mvn/wrapper/maven-wrapper.jar
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# ==========================================
+# Node / Frontend Build Artifacts & Dependencies
+# ==========================================
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+dist-ssr/
 frontend/node_modules/
 frontend/dist/
+frontend/dist-ssr/
 frontend/*.local
 
-# Logs
-*.log
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.env
+!*.env.example
+!.env.example
 
-# OS & IDE
-.DS_Store
+# ==========================================
+# Logs
+# ==========================================
+*.log
+logs/
+**/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# IntelliJ IDEA
+# ==========================================
 .idea/
 *.iml
+*.iws
+*.ipr
+out/
+**/out/
+
+# ==========================================
+# Visual Studio Code
+# ==========================================
 .vscode/
+*.code-workspace
+
+# ==========================================
+# Operating System & Cache Files
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+*~
+*.swo
